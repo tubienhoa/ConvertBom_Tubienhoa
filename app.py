@@ -8,8 +8,12 @@ import pandas as pd
 
 from converter import (
     load_technical_bom, convert_to_erp, write_erp_workbook,
-    DEFAULT_RULES, ERP_COLUMNS,
+    DEFAULT_RULES, ERP_COLUMNS, load_qtsx_table, DEFAULT_QTSX_TABLE,
 )
+
+import os
+QTSX_FILE = os.path.join(os.path.dirname(__file__), "quy_trinh_san_xuat.xlsx")
+QTSX_TABLE = load_qtsx_table(QTSX_FILE) if os.path.exists(QTSX_FILE) else DEFAULT_QTSX_TABLE
 
 st.set_page_config(page_title="Chuyển đổi BOM Kỹ thuật -> ERP", layout="wide")
 
@@ -51,11 +55,28 @@ drawing_prefixes_str = st.sidebar.text_input(
 )
 rules["drawing_prefixes"] = [x.strip().upper() for x in drawing_prefixes_str.split(",") if x.strip()]
 
-with st.sidebar.expander("Từ khoá đoán Công đoạn"):
-    kw_df = pd.DataFrame(DEFAULT_RULES["process_keywords"], columns=["Từ khoá (không dấu)", "Công đoạn"])
+with st.sidebar.expander("📋 Bảng quy trình sản xuất chuẩn (QTSX)"):
+    st.caption("Đọc trực tiếp từ file quy_trinh_san_xuat.xlsx — đây là căn cứ chính thức.")
+    qtsx_rows = []
+    for ma, info in QTSX_TABLE.items():
+        for code, ten in info["steps"]:
+            qtsx_rows.append({"Mã QTSX": ma, "Mô tả": info["mo_ta"], "Công đoạn": code, "Tên công đoạn": ten})
+    st.dataframe(pd.DataFrame(qtsx_rows), use_container_width=True, hide_index=True)
+
+with st.sidebar.expander("🔑 Luật đoán QTSX/Công đoạn theo từ khoá"):
+    st.caption(
+        "Mỗi dòng: từ khoá xuất hiện trong mô tả (không dấu) -> QTSX -> Công đoạn. "
+        "Để trống QTSX/Công đoạn nếu muốn công cụ KHÔNG đoán (an toàn hơn là đoán sai)."
+    )
+    kw_df = pd.DataFrame(
+        [[a, b or "", c or ""] for a, b, c in DEFAULT_RULES["process_keyword_rules"]],
+        columns=["Từ khoá (không dấu)", "Mã QTSX", "Công đoạn"],
+    )
     kw_df = st.data_editor(kw_df, num_rows="dynamic", use_container_width=True, key="kw_editor")
-    rules["process_keywords"] = [[str(r["Từ khoá (không dấu)"]), str(r["Công đoạn"])]
-                                  for _, r in kw_df.iterrows() if r["Từ khoá (không dấu)"]]
+    rules["process_keyword_rules"] = [
+        [str(r["Từ khoá (không dấu)"]), (str(r["Mã QTSX"]) or None) or None, (str(r["Công đoạn"]) or None) or None]
+        for _, r in kw_df.iterrows() if r["Từ khoá (không dấu)"]
+    ]
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Đổi quy tắc sẽ áp dụng lại ngay khi bạn bấm 'Chuyển đổi'.")
@@ -103,11 +124,36 @@ if uploaded is not None:
 
     if "erp_rows" in st.session_state:
         st.subheader("2️⃣ Xem trước & chỉnh sửa BOM ERP")
+        df = pd.DataFrame(st.session_state["erp_rows"], columns=ERP_COLUMNS)
+
+        # Cảnh báo dữ liệu bất thường: % hao hụt âm (KL nguyên liệu < KL thành phẩm -> vô lý)
+        # hoặc quá lớn (>300%, nên kiểm tra lại kích thước/blank size trong file kỹ thuật).
+        hh = pd.to_numeric(df["% Tỉ lệ hao hụt"], errors="coerce")
+        bad_neg = df[hh < 0]
+        bad_high = df[hh > 300]
+        if len(bad_neg) > 0:
+            st.warning(
+                f"⚠️ {len(bad_neg)} dòng có % hao hụt ÂM (khối lượng nguyên liệu nhỏ hơn "
+                f"khối lượng thành phẩm) — dữ liệu gốc trong file kỹ thuật khả năng bị sai/đổi cột. "
+                f"Xem cột 'Mã sản phẩm': " +
+                ", ".join(str(x) for x in bad_neg["Mã sản phẩm"].head(10).tolist())
+            )
+        if len(bad_high) > 0:
+            st.warning(
+                f"⚠️ {len(bad_high)} dòng có % hao hụt > 300% — nên kiểm tra lại kích thước phôi. "
+                f"Mã: " + ", ".join(str(x) for x in bad_high["Mã sản phẩm"].head(10).tolist())
+            )
+        missing_cd = df[(df["Loại"] == "BTP") & (df["Công đoạn"].isna())]
+        if len(missing_cd) > 0:
+            st.info(
+                f"ℹ️ {len(missing_cd)} dòng chưa xác định được Công đoạn (không đủ căn cứ để đoán) "
+                f"— vui lòng điền tay trong bảng bên dưới."
+            )
+
         st.caption(
             "Bạn có thể sửa trực tiếp trong bảng (đổi tên, mã, công đoạn, gộp dòng...) "
             "trước khi tải về. Ô trống có thể bổ sung thủ công."
         )
-        df = pd.DataFrame(st.session_state["erp_rows"], columns=ERP_COLUMNS)
         edited_df = st.data_editor(
             df, num_rows="dynamic", use_container_width=True, height=600, key="erp_editor"
         )

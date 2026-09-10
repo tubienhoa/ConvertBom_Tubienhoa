@@ -24,11 +24,17 @@ kỹ sư/QC vẫn nên rà soát lại trước khi nạp vào ERP thật.
 
 ```
 bom_converter/
-├── app.py            # Giao diện Streamlit
-├── converter.py       # Logic đọc & chuyển đổi (dùng lại được ngoài Streamlit)
+├── app.py                     # Giao diện Streamlit
+├── converter.py               # Logic đọc & chuyển đổi (dùng lại được ngoài Streamlit)
+├── quy_trinh_san_xuat.xlsx    # Bảng quy trình sản xuất CHUẨN — bắt buộc phải có file này
 ├── requirements.txt
 └── README.md
 ```
+
+⚠️ **`quy_trinh_san_xuat.xlsx` là file bắt buộc** — app đọc trực tiếp từ đây để lấy
+danh sách QTSX/Công đoạn chính thức (CUT, BD, WD, MC, PNT, PK, FM, AS, PL). Nếu bạn
+cập nhật quy trình sản xuất (thêm/sửa công đoạn), chỉ cần sửa file Excel này và
+push lại lên GitHub — không cần sửa code.
 
 ## Chạy thử ở máy local
 
@@ -75,4 +81,3 @@ Vì bạn đã có tài khoản GitHub và Streamlit (đã liên kết với Git
 - Nếu cấu trúc file BOM kỹ thuật của bạn có sheet tên khác "Form", hoặc số dòng tiêu đề
   khác so với mẫu, có thể cần chỉnh hàm `load_technical_bom()` trong `converter.py`
   (phần dò dòng "Khách hàng:", "Dự án:", và dòng tiêu đề bảng "MỤC").
-"# ConvertBom_Tubienhoa" 
